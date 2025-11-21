@@ -1,7 +1,6 @@
 name: Automatic Backup of Documentation
 
 # این ورک‌فلو با هر push به master که شامل تغییر در پوشه viraai/docs باشد، اجرا می‌شود.
-# همچنین امکان اجرای دستی از تب Actions را فراهم می‌کند.
 on:
   push:
     branches:
@@ -14,42 +13,52 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      # ۱. Checkout کردن محتوای مخزن فعلی
+      # ۱. تنظیم کلید SSH برای دسترسی به مخزن خصوصی
+      - name: Setup SSH Key for Backup Repository
+        uses: webfactory/ssh-agent@v0.5.4
+        with:
+          # کلید خصوصی که شما در Secrets ذخیره کرده‌اید
+          ssh-private-key: ${{ secrets.BACKUP_SSH_KEY }}
+          
+      # ۲. Checkout کردن محتوای مخزن فعلی
       - name: Checkout Source Repository
         uses: actions/checkout@v4
         with:
-          # اطمینان حاصل شود که تاریخچه کامل برای push بعدی وجود دارد
           fetch-depth: 0
 
-      # ۲. کپی کردن محتوای پوشه viraai/docs به یک دایرکتوری موقت
-      # این کار محتوای docs را برای Push آماده می‌کند تا در ریشه مخزن مقصد قرار گیرد.
+      # ۳. کپی محتوای docs به دایرکتوری موقت
       - name: Copy Docs Content to Temporary Directory
         run: |
-          # ساخت دایرکتوری مقصد
           mkdir -p /tmp/docs_to_push
-
-          # کپی کردن محتوای *داخل* viraai/docs (فایل‌ها و زیرپوشه‌ها) به دایرکتوری موقت
-          # از cp برای اطمینان از کپی کامل استفاده می‌شود.
           cp -R viraai/docs/. /tmp/docs_to_push
 
-      # ۳. Push کردن دایرکتوری موقت به مخزن viraaiio/viraai-backup
-      - name: Push to Destination Repository (ad-m/github-push-action)
-        uses: ad-m/github-push-action@master
-        with:
-          # توکنی که برای دسترسی به مخزن viraai-backup استفاده می‌شود
-          github_token: ${{ secrets.PAT_TOKEN }}
-          # شاخه مقصد
-          branch: master
-          # مسیر دایرکتوری که محتوای آن باید push شود
-          directory: /tmp/docs_to_push
-          # آدرس کامل مخزن مقصد
-          repository: viraaiio/viraai-backup
-          # پیام کامیت
-          commit_message: "Automated backup of documentation [skip ci]"
-          # force: true برای اطمینان از اینکه همیشه محتوا overwrite شود
-          force: true
+      # ۴. Push نهایی با استفاده از SSH
+      - name: Commit and Push to Destination Repository (SSH)
+        run: |
+          # تنظیمات Git برای کامیت
+          git config --global user.email "backup-bot@viraaiio.com"
+          git config --global user.name "ViraAI Backup Bot"
+          
+          # رفتن به دایرکتوری محتوای کپی شده
+          cd /tmp/docs_to_push
+          
+          # تنظیم remote با استفاده از پروتکل SSH (که از کلید بالا استفاده می‌کند)
+          git init
+          git remote add backup-repo git@github.com:viraaiio/viraai-backup.git
+          
+          # کشیدن آخرین تغییرات مخزن مقصد
+          git pull backup-repo master || echo "Initial pull failed, continuing..."
 
-      # ۴. مرحله تایید نهایی
+          # اضافه کردن فایل‌ها
+          git add .
+          
+          # کامیت کردن تغییرات
+          git commit -m "Automated documentation backup [skip ci]" || echo "No changes to commit."
+
+          # Push اجباری به شاخه master مخزن مقصد
+          # Force push برای اطمینان از همگام‌سازی کامل محتوای docs
+          git push -u backup-repo master --force
+
       - name: Verification Log
         if: success()
-        run: echo "Backup completed successfully to viraaiio/viraai-backup"
+        run: echo "Backup completed successfully using SSH Deploy Key."
