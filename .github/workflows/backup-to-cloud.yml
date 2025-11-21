@@ -1,0 +1,61 @@
+# این Workflow به طور کامل در مخزن viraaiio/docs قرار دارد.
+# فعالسازی: هر بار که Push جدیدی در این مخزن (docs) انجام شود.
+
+name: Document Sync to Cloud Project
+
+on:
+  push:
+    branches:
+      - master
+      - main # اگر از شاخه main استفاده می‌کنید
+    paths:
+      - "**" # هر گونه تغییر در این مخزن، Workflow را فعال می‌کند
+
+jobs:
+  sync_docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Repository (viraaiio/docs)
+        # Checkout کردن همین مخزن (docs)
+        uses: actions/checkout@v4
+        with:
+          path: docs_source
+          # ما نیازی به PAT_TOKEN برای این مرحله نداریم چون این مخزن فعلی است.
+
+      - name: Checkout Target Repository (viraai-cloud-project)
+        # Checkout کردن مخزن مقصد (cloud-project)
+        # این مهمترین بخش است، زیرا Checkout از یک مخزن خارجی نیاز به PAT_TOKEN دارد.
+        uses: actions/checkout@v4
+        with:
+          repository: viraaiio/viraai-cloud-project # نام مخزن مقصد
+          path: cloud_target # محل دانلود مخزن مقصد
+          ref: master
+          token: ${{ secrets.PAT_TOKEN }} # استفاده از توکن PAT_TOKEN
+
+      - name: Copy & Sync files from Docs to Cloud Project Subdir
+        # کپی کردن محتوای docs_source به پوشه viraai/docs در مخزن مقصد
+        run: |
+          # ایجاد پوشه مقصد اگر وجود ندارد
+          mkdir -p cloud_target/viraai/docs
+          # rsync -a --delete: کپی همگام‌سازی شده (حذف فایل‌های اضافی در مقصد)
+          rsync -a --delete docs_source/ cloud_target/viraai/docs/
+
+      - name: Configure Git for Auto-Commit
+        # تنظیمات کاربری Git برای انجام Commit در مخزن مقصد
+        run: |
+          git config --global user.email "viraaiio@users.noreply.github.com"
+          git config --global user.name "viraaiio"
+
+      - name: Commit and Push Changes to Target Repo
+        # Commit کردن و Push کردن تغییرات در مخزن مقصد (cloud_target)
+        run: |
+          cd cloud_target
+          # بررسی وجود تغییرات قبل از Commit
+          if ! git diff --quiet --exit-code; then
+            git add .
+            git commit -m "Auto Sync: Updated documentation from viraaiio/docs"
+            # Push به مخزن cloud-project
+            git push
+          else
+            echo "No changes detected in viraai-cloud-project. Skipping commit."
+          fi
