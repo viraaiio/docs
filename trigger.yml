@@ -1,0 +1,37 @@
+# این Workflow در مخزن viraaiio/docs قرار دارد.
+# وظیفه آن این است که هر زمان در این مخزن Push انجام شد،
+# Workflow بک‌آپ را در مخزن viraaiio/viraai-cloud-project فعال کند.
+
+name: Trigger Cloud Project Backup
+
+# بخش On: مشخص می‌کند چه زمانی این Workflow فعال شود.
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "**" # فعال شدن با هر تغییر در هر فایلی در شاخه master
+
+jobs:
+  trigger_backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch Backup Workflow in Target Repo
+        # استفاده از اکشن workflow-dispatch برای فراخوانی یک Workflow در مخزن دیگر
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          # توکن شخصی (PAT_TOKEN) که قبلاً در تنظیمات مخزن docs ایجاد کرده‌اید.
+          token: ${{ secrets.PAT_TOKEN }}
+          
+          # مخزن مقصد (Repository)
+          repo: viraaiio/viraai-cloud-project
+          
+          # نام Workflow مقصد (باید دقیقاً با نامی که در backup.yml گذاشتیم، یکی باشد)
+          # Automatic Documentation Backup
+          workflow: Automatic Documentation Backup
+          
+          # شاخه‌ای که Workflow مقصد باید روی آن اجرا شود
+          ref: master
+          
+          # پارامترهای اختیاری که به Workflow مقصد پاس داده می‌شوند
+          input: '{"source_repo": "docs"}'
