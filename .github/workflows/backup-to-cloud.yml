@@ -8,48 +8,45 @@ on:
 jobs:
   sync-docs:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write # <--- این خط جدید است!
+    
+    # توجه: این مجوز مورد نیاز نیست چون از PAT_FOR_BACKUP استفاده می‌کنیم.
+    # اما اگر PAT به هر دلیلی کار نکرد، استفاده از GITHUB_TOKEN پیش‌فرض به همراه این مجوز ضروری است.
+    # برای اطمینان از کارکرد با PAT، این خط را حذف یا کامنت می‌کنیم.
+    # permissions:
+    #   contents: write 
+
     steps:
-      - name: Checkout Source Repo
+      - name: Checkout Source Repo (viraaiio/docs)
         uses: actions/checkout@v4
         with:
-          path: docs
+          path: docs # Checkout into 'docs' directory
           
-      - name: Checkout Target Repo
+      # گام Checkout مخزن مقصد به این روش (فقط برای دریافت محتوا) باید حفظ شود.
+      - name: Checkout Target Repo (viraaiio/viraai-cloud-project)
         uses: actions/checkout@v4
         with:
           repository: viraaiio/viraai-cloud-project
-          token: ${{ secrets.PAT_FOR_BACKUP }} # Now using PAT with write access
-          path: target_repo
+          token: ${{ secrets.PAT_FOR_BACKUP }}
+          path: target_repo # Checkout into 'target_repo' directory
           
       - name: Copy Docs to Target Repo Directory
         run: |
+          # ساخت پوشه هدف در مخزن مقصد
           mkdir -p target_repo/viraaiio/docs
-          # Use rsync for better copying/syncing logic, but cp -R is also fine for now
+          # کپی کردن محتوای docs به پوشه جدید در target_repo
+          # از علامت نقطه (`.`) در انتها استفاده می‌کنیم تا مطمئن شویم محتویات کپی شوند، نه خود پوشه docs.
           cp -R docs/. target_repo/viraaiio/docs/
 
+      # گام نهایی و قطعی: Push با استفاده از PAT و بدون درگیر شدن با تنظیمات داخلی Git
       - name: Commit and Push Changes to Target Repo
         run: |
           cd target_repo
-          # We need to use the token from the secret in the push URL, 
-          # but since you are using `actions/checkout` with the token, 
-          # the local Git history in the target_repo path should be set up correctly for push.
-          
-          # Let's ensure the push URL uses the PAT explicitly for maximum certainty,
-          # as the error suggests the default setup for push is failing authentication.
-          
-          # The problem is that the `actions/checkout` with `token: ${{ secrets.PAT_FOR_BACKUP }}` 
-          # correctly fetches the repo, but the final `git push` uses the default token 
-          # if the PAT is not embedded in the remote URL.
-          
-          # We will modify the `git push` command to use the token explicitly:
-          
           git config user.name "viraaiio[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add viraaiio/docs
-          git commit -m "Automated backup of viraaiio/docs" || echo "No changes to commit"
           
-          # Pushing using the token directly in the URL (THIS IS THE KEY CHANGE)
-          git push https://${{ secrets.PAT_FOR_BACKUP }}@github.com/viraaiio/viraai-cloud-project.git HEAD:master 
-          # Note: We are using HEAD:master to ensure we push the current commit to the master branch.
+          # اجرای commit
+          git commit -m "Automated backup of viraaiio/docs" || echo "No changes to commit"
+
+          # Push با استفاده از PAT به عنوان رمز عبور (این روش امن و استاندارد است)
+          git push https://x-access-token:${{ secrets.PAT_FOR_BACKUP }}@github.com/viraaiio/viraai-cloud-project.git
