@@ -1,52 +1,55 @@
-name: Backup Docs
+name: Automatic Backup of Documentation
 
+# این ورک‌فلو با هر push به master که شامل تغییر در پوشه viraai/docs باشد، اجرا می‌شود.
+# همچنین امکان اجرای دستی از تب Actions را فراهم می‌کند.
 on:
   push:
     branches:
       - master
+    paths:
+      - 'viraai/docs/**'
+  workflow_dispatch:
 
 jobs:
-  sync-docs:
+  backup:
     runs-on: ubuntu-latest
-    
-    # توجه: این مجوز مورد نیاز نیست چون از PAT_FOR_BACKUP استفاده می‌کنیم.
-    # اما اگر PAT به هر دلیلی کار نکرد، استفاده از GITHUB_TOKEN پیش‌فرض به همراه این مجوز ضروری است.
-    # برای اطمینان از کارکرد با PAT، این خط را حذف یا کامنت می‌کنیم.
-    # permissions:
-    #   contents: write 
-
     steps:
-      - name: Checkout Source Repo (viraaiio/docs)
+      # ۱. Checkout کردن محتوای مخزن فعلی
+      - name: Checkout Source Repository
         uses: actions/checkout@v4
         with:
-          path: docs # Checkout into 'docs' directory
-          
-      # گام Checkout مخزن مقصد به این روش (فقط برای دریافت محتوا) باید حفظ شود.
-      - name: Checkout Target Repo (viraaiio/viraai-cloud-project)
-        uses: actions/checkout@v4
+          # اطمینان حاصل شود که تاریخچه کامل برای push بعدی وجود دارد
+          fetch-depth: 0
+
+      # ۲. کپی کردن محتوای پوشه viraai/docs به یک دایرکتوری موقت
+      # این کار محتوای docs را برای Push آماده می‌کند تا در ریشه مخزن مقصد قرار گیرد.
+      - name: Copy Docs Content to Temporary Directory
+        run: |
+          # ساخت دایرکتوری مقصد
+          mkdir -p /tmp/docs_to_push
+
+          # کپی کردن محتوای *داخل* viraai/docs (فایل‌ها و زیرپوشه‌ها) به دایرکتوری موقت
+          # از cp برای اطمینان از کپی کامل استفاده می‌شود.
+          cp -R viraai/docs/. /tmp/docs_to_push
+
+      # ۳. Push کردن دایرکتوری موقت به مخزن viraaiio/viraai-backup
+      - name: Push to Destination Repository (ad-m/github-push-action)
+        uses: ad-m/github-push-action@master
         with:
-          repository: viraaiio/viraai-cloud-project
-          token: ${{ secrets.PAT_FOR_BACKUP }}
-          path: target_repo # Checkout into 'target_repo' directory
-          
-      - name: Copy Docs to Target Repo Directory
-        run: |
-          # ساخت پوشه هدف در مخزن مقصد
-          mkdir -p target_repo/viraaiio/docs
-          # کپی کردن محتوای docs به پوشه جدید در target_repo
-          # از علامت نقطه (`.`) در انتها استفاده می‌کنیم تا مطمئن شویم محتویات کپی شوند، نه خود پوشه docs.
-          cp -R docs/. target_repo/viraaiio/docs/
+          # توکنی که برای دسترسی به مخزن viraai-backup استفاده می‌شود
+          github_token: ${{ secrets.PAT_TOKEN }}
+          # شاخه مقصد
+          branch: master
+          # مسیر دایرکتوری که محتوای آن باید push شود
+          directory: /tmp/docs_to_push
+          # آدرس کامل مخزن مقصد
+          repository: viraaiio/viraai-backup
+          # پیام کامیت
+          commit_message: "Automated backup of documentation [skip ci]"
+          # force: true برای اطمینان از اینکه همیشه محتوا overwrite شود
+          force: true
 
-      # گام نهایی و قطعی: Push با استفاده از PAT و بدون درگیر شدن با تنظیمات داخلی Git
-      - name: Commit and Push Changes to Target Repo
-        run: |
-          cd target_repo
-          git config user.name "viraaiio[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add viraaiio/docs
-          
-          # اجرای commit
-          git commit -m "Automated backup of viraaiio/docs" || echo "No changes to commit"
-
-          # Push با استفاده از PAT به عنوان رمز عبور (این روش امن و استاندارد است)
-          git push https://x-access-token:${{ secrets.PAT_FOR_BACKUP }}@github.com/viraaiio/viraai-cloud-project.git
+      # ۴. مرحله تایید نهایی
+      - name: Verification Log
+        if: success()
+        run: echo "Backup completed successfully to viraaiio/viraai-backup"
